@@ -9,6 +9,8 @@ import torchvision
 from torchvision import transforms
 from tqdm import tqdm
 
+from balanced_batch_sampler import BalancedBatchSampler
+
 torch.manual_seed(0)
 random.seed(0)
 np.random.seed(0)
@@ -44,14 +46,23 @@ if device == "cpu":
 else:
     clip.model.convert_weights(model)  # Actually this line is unnecessary since clip by default already on float16
 
-train_dataloader = torch.utils.data.DataLoader(torchvision.datasets.ImageFolder(
-    "data/coco_crops_few_shot/train", transform=preprocess),
+train_dataset = torchvision.datasets.ImageFolder(
+    "data/coco_crops_few_shot/train", transform=preprocess)
+train_labels = [f"a photo of a {c}") for c in train_dataset.classes]
+train_sampler = BalancedBatchSampler(train_labels, BATCH_SIZE, 1)
+train_dataloader = torch.utils.data.DataLoader(train_dataset,
                                                 shuffle=True,
-                                               batch_size=BATCH_SIZE)
+                                               batch_size=BATCH_SIZE,
+                                               batch_sampler=train_sampler)
 
+val_dataset = torchvision.datasets.ImageFolder(
+    "data/coco_crops_few_shot/test", transform=preprocess)
+val_labels = [f"a photo of a {c}") for c in val_dataset.classes]
+val_sampler = BalancedBatchSampler(val_labels, BATCH_SIZE, 1)
 val_dataloader = torch.utils.data.DataLoader(torchvision.datasets.ImageFolder(
     "data/coco_crops_few_shot/test", transform=preprocess),
-                                               batch_size=BATCH_SIZE)
+                                               batch_size=BATCH_SIZE,
+                                               batch_sampler=val_sampler)
 
 loss_img = torch.nn.CrossEntropyLoss()
 loss_txt = torch.nn.CrossEntropyLoss()
