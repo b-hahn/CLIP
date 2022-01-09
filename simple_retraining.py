@@ -23,7 +23,7 @@ np.random.seed(0)
 # Half-precision stochastically rounded text encoder weights were used
 
 SAVE_INTERVAL = 1
-BATCH_SIZE = 64
+BATCH_SIZE = 8
 NUM_EPOCHS = 1000
 
 #BATCH_SIZE must larger than 1
@@ -47,7 +47,8 @@ else:
     clip.model.convert_weights(model)  # Actually this line is unnecessary since clip by default already on float16
 
 train_dataset = torchvision.datasets.ImageFolder("data/coco_crops_few_shot/train", transform=preprocess)
-train_labels = torch.tensor([i for i in range(len(train_dataset.imgs))])
+# train_labels = torch.tensor([i for i in range(len(train_dataset.imgs))])
+train_labels = torch.tensor(train_dataset.targets)
 train_sampler = BalancedBatchSampler(train_labels, BATCH_SIZE, 1)
 train_dataloader = torch.utils.data.DataLoader(train_dataset,
                                             #    shuffle=True,
@@ -55,7 +56,8 @@ train_dataloader = torch.utils.data.DataLoader(train_dataset,
                                                batch_sampler=train_sampler)
 
 val_dataset = torchvision.datasets.ImageFolder("data/coco_crops_few_shot/test", transform=preprocess)
-val_labels = torch.tensor([i for i in range(len(val_dataset.imgs))])
+# val_labels = torch.tensor([i for i in range(len(val_dataset.imgs))])
+val_labels = torch.tensor(val_dataset.targets)
 val_sampler = BalancedBatchSampler(val_labels, BATCH_SIZE, 1)
 val_dataloader = torch.utils.data.DataLoader(torchvision.datasets.ImageFolder("data/coco_crops_few_shot/test",
                                                                               transform=preprocess),
@@ -150,7 +152,7 @@ for epoch in range(NUM_EPOCHS):
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': total_loss,
-        }, f"model_checkpoint/model_{epoch}.pt")  #just change to your preferred folder/filename
+        }, f"model_{epoch}.pt")  #just change to your preferred folder/filename
     print(f"Saved weights under model_checkpoint/model_{epoch}.pt.")
 
     # validation accuracy
