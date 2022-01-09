@@ -1,3 +1,5 @@
+
+from pathlib import Path
 import random
 
 import clip
@@ -23,9 +25,11 @@ np.random.seed(0)
 # Half-precision Adam statistics
 # Half-precision stochastically rounded text encoder weights were used
 
-SAVE_INTERVAL = 1
+SAVE_INTERVAL = 10
 BATCH_SIZE = 8
 NUM_EPOCHS = 1000
+weights_path = Path("model_checkpoints")
+weights_path.mkdir(exist_ok=True)
 
 #BATCH_SIZE must larger than 1
 # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -151,14 +155,16 @@ for epoch in range(NUM_EPOCHS):
 
     writer.add_scalar("Loss/train", epoch_train_loss / num_batches_train, epoch)
 
-    torch.save(
-        {
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': total_loss,
-        }, f"model_{epoch}.pt")  #just change to your preferred folder/filename
-    print(f"Saved weights under model_checkpoint/model_{epoch}.pt.")
+    if epoch % SAVE_INTERVAL == 0:
+
+        torch.save(
+            {
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': total_loss,
+            }, weights_path / f"model_{epoch}.pt")  #just change to your preferred folder/filename
+        print(f"Saved weights under model_checkpoint/model_{epoch}.pt.")
 
     # validation accuracy
     values_list, indices_list = [], []
