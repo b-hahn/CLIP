@@ -4,6 +4,7 @@ import clip
 import numpy as np
 from PIL import Image
 import torch
+from torch.utils.tensorboard import SummaryWriter
 import torchmetrics
 import torchvision
 from torchvision import transforms
@@ -45,6 +46,8 @@ if device == "cpu":
     model.float()
 else:
     clip.model.convert_weights(model)  # Actually this line is unnecessary since clip by default already on float16
+
+writer = SummaryWriter()
 
 train_dataset = torchvision.datasets.ImageFolder("data/coco_crops_few_shot/train", transform=preprocess)
 # train_labels = torch.tensor([i for i in range(len(train_dataset.imgs))])
@@ -146,6 +149,8 @@ for epoch in range(NUM_EPOCHS):
             optimizer.step()
             clip.model.convert_weights(model)
 
+    writer.add_scalar("Loss/train", epoch_train_loss / num_batches_train, epoch)
+
     torch.save(
         {
             'epoch': epoch,
@@ -197,5 +202,10 @@ for epoch in range(NUM_EPOCHS):
     # compute mean top5 accuracy and top1 accuracy
     mean_top5_accuracy = torch.stack(acc_top5_list).mean().cpu().numpy()
     print(f"Mean Top 5 Accuracy: {mean_top5_accuracy*100}%.")
+    writer.add_scalar("Validation Accuracy/Top5", mean_top5_accuracy , epoch)
     mean_top1_accuracy = torch.stack(acc_top1_list).mean().cpu().numpy()
     print(f"Mean Top 1 Accuracy: {mean_top1_accuracy*100}%.")
+    writer.add_scalar("Validation Accuracy/Top1", mean_top1_accuracy, epoch)
+
+writer.flush()
+writer.close()
