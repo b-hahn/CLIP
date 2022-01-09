@@ -3,3 +3,4 @@ regex
 tqdm
 torch
 torchvision
+torchmetrics
