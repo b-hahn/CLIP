@@ -21,7 +21,7 @@ np.random.seed(0)
 # Half-precision stochastically rounded text encoder weights were used
 
 SAVE_INTERVAL = 1
-BATCH_SIZE = 2
+BATCH_SIZE = 64
 NUM_EPOCHS = 10
 
 #BATCH_SIZE must larger than 1
@@ -45,11 +45,11 @@ else:
     clip.model.convert_weights(model)  # Actually this line is unnecessary since clip by default already on float16
 
 train_dataloader = torch.utils.data.DataLoader(torchvision.datasets.ImageFolder(
-    "/Users/ben/Downloads/coco_crops_few_shot/train", transform=preprocess),
+    "data/coco_crops_few_shot/train", transform=preprocess),
                                                batch_size=BATCH_SIZE)
 
 val_dataloader = torch.utils.data.DataLoader(torchvision.datasets.ImageFolder(
-    "/Users/ben/Downloads/coco_crops_few_shot/train", transform=preprocess),
+    "data/coco_crops_few_shot/test", transform=preprocess),
                                                batch_size=BATCH_SIZE)
 
 loss_img = torch.nn.CrossEntropyLoss()
@@ -61,7 +61,7 @@ optimizer = torch.optim.Adam(
 num_batches_train = len(train_dataloader.dataset)/BATCH_SIZE
 for epoch in range(NUM_EPOCHS):
     j = 0
-    print(f"{epoch=}")
+    print(f"Epoch: {epoch}")
     for batch in tqdm(train_dataloader,total=num_batches_train):
         # if j > 10:
         #     break
@@ -72,15 +72,13 @@ for epoch in range(NUM_EPOCHS):
 
         images = torch.stack([img for img in list_image], dim=0).to(
             device
-        )  # omit the Image.fromarray if the images already in PIL format, change this line to images=list_image if using preprocess inside the dataset class
-        # images = torch.stack([preprocess(Image.fromarray(img.numpy())) for img in list_image], dim=0).to(
-        #     device
+        )
         list_txt = [f"a photo of a {train_dataloader.dataset.classes[label_id]}" for label_id in list_txt]
         texts = clip.tokenize(list_txt).to(device)
 
         logits_per_image, logits_per_text = model(images, texts)
 
-        ground_truth = torch.arange(BATCH_SIZE, dtype=torch.long, device=device)
+        ground_truth = torch.arange(logits_per_image.shape[0], dtype=torch.long, device=device)
 
         total_loss = (loss_img(logits_per_image, ground_truth) + loss_txt(logits_per_text, ground_truth)) / 2
         total_loss.backward()
@@ -113,14 +111,15 @@ for epoch in range(NUM_EPOCHS):
             print(f"{batch[0].mean()}")
         # if i > 10:
         #     break
-        image, class_ids = batch
+        images, class_ids = batch
+        class_ids = class_ids.to(device)
         # image_input = preprocess(image).unsqueeze(0).to(device)
-        image_input = image
+        image_input = images.to(device)
         text_inputs = torch.cat([clip.tokenize(f"a photo of a {c}") for c in val_dataloader.dataset.classes]).to(device)
 
         # Calculate features
         with torch.no_grad():
-            image_features = n .encode_image(image_input)
+            image_features = model.encode_image(image_input)
             text_features = model.encode_text(text_inputs)
 
         # Pick the top 5 most similar labels for the image
@@ -140,7 +139,7 @@ for epoch in range(NUM_EPOCHS):
         #     top5_results.append(True if cid in indices else False)
         #     top1_results.append(True if cid == indices[0] else False)
     # compute mean top5 accuracy and top1 accuracy
-    mean_top5_accuracy = np.mean(acc_top5_list)
+    mean_top5_accuracy = torch.stack(acc_top5_list).mean().cpu().numpy()
     print(f"Mean Top 5 Accuracy: {mean_top5_accuracy*100}%.")
-    mean_top1_accuracy = np.mean(acc_top1_list)
+    mean_top1_accuracy = torch.stack(acc_top1_list).mean().cpu().numpy()
     print(f"Mean Top 1 Accuracy: {mean_top1_accuracy*100}%.")
