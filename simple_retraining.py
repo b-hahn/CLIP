@@ -46,23 +46,21 @@ if device == "cpu":
 else:
     clip.model.convert_weights(model)  # Actually this line is unnecessary since clip by default already on float16
 
-train_dataset = torchvision.datasets.ImageFolder(
-    "data/coco_crops_few_shot/train", transform=preprocess)
-train_labels = [f"a photo of a {c}") for c in train_dataset.classes]
+train_dataset = torchvision.datasets.ImageFolder("data/coco_crops_few_shot/train", transform=preprocess)
+train_labels = torch.tensor([i for i in range(len(train_dataset.imgs))])
 train_sampler = BalancedBatchSampler(train_labels, BATCH_SIZE, 1)
 train_dataloader = torch.utils.data.DataLoader(train_dataset,
-                                                shuffle=True,
-                                               batch_size=BATCH_SIZE,
+                                            #    shuffle=True,
+                                            #    batch_size=BATCH_SIZE,
                                                batch_sampler=train_sampler)
 
-val_dataset = torchvision.datasets.ImageFolder(
-    "data/coco_crops_few_shot/test", transform=preprocess)
-val_labels = [f"a photo of a {c}") for c in val_dataset.classes]
+val_dataset = torchvision.datasets.ImageFolder("data/coco_crops_few_shot/test", transform=preprocess)
+val_labels = torch.tensor([i for i in range(len(val_dataset.imgs))])
 val_sampler = BalancedBatchSampler(val_labels, BATCH_SIZE, 1)
-val_dataloader = torch.utils.data.DataLoader(torchvision.datasets.ImageFolder(
-    "data/coco_crops_few_shot/test", transform=preprocess),
-                                               batch_size=BATCH_SIZE,
-                                               batch_sampler=val_sampler)
+val_dataloader = torch.utils.data.DataLoader(torchvision.datasets.ImageFolder("data/coco_crops_few_shot/test",
+                                                                              transform=preprocess),
+                                            #  batch_size=BATCH_SIZE,
+                                             batch_sampler=val_sampler)
 
 loss_img = torch.nn.CrossEntropyLoss()
 loss_txt = torch.nn.CrossEntropyLoss()
@@ -199,5 +197,3 @@ for epoch in range(NUM_EPOCHS):
     print(f"Mean Top 5 Accuracy: {mean_top5_accuracy*100}%.")
     mean_top1_accuracy = torch.stack(acc_top1_list).mean().cpu().numpy()
     print(f"Mean Top 1 Accuracy: {mean_top1_accuracy*100}%.")
-
-

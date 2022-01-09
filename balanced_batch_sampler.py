@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, BatchSampler
 
@@ -8,6 +9,7 @@ class BalancedBatchSampler(BatchSampler):
     """
 
     def __init__(self, labels, n_classes, n_samples):
+        # label: unique id per datapoint, e.g. path
         self.labels = labels
         self.labels_set = list(set(self.labels.numpy()))
         self.label_to_indices = {label: np.where(self.labels.numpy() == label)[0]
@@ -40,10 +42,10 @@ class BalancedBatchSampler(BatchSampler):
     def __len__(self):
         return self.n_dataset // self.batch_size
 
-train_labels = torch.tensor([item[2] for item in train_dataset])
-train_dataloader = DataLoader(train_dataset, batch_sampler=train_sampler)
+# train_labels = torch.tensor([item[2] for item in train_dataset])
+# train_dataloader = DataLoader(train_dataset, batch_sampler=train_sampler)
 
-test_labels = torch.tensor([item[2] for item in test_dataset])
-train_sampler = BalancedBatchSampler(train_labels, BATCH_SIZE, 1)
-test_sampler = BalancedBatchSampler(test_labels, BATCH_SIZE, 1)
-test_dataloader = DataLoader(test_dataset, batch_sampler=test_sampler)
+# test_labels = torch.tensor([item[2] for item in test_dataset])
+# train_sampler = BalancedBatchSampler(train_labels, BATCH_SIZE, 1)
+# test_sampler = BalancedBatchSampler(test_labels, BATCH_SIZE, 1)
+# test_dataloader = DataLoader(test_dataset, batch_sampler=test_sampler)
