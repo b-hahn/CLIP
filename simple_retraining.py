@@ -174,6 +174,7 @@ for epoch in range(NUM_EPOCHS):
     acc_top5_list = []
 
     num_batches_val = len(val_dataloader.dataset)/BATCH_SIZE
+    epoch_val_loss = 0
     for i, batch in enumerate(tqdm(val_dataloader, total=num_batches_val)):
         images, class_ids = batch
         class_ids = class_ids.to(device)
@@ -185,6 +186,11 @@ for epoch in range(NUM_EPOCHS):
         with torch.no_grad():
             image_features = model.encode_image(image_input)
             text_features = model.encode_text(text_inputs)
+
+            logits_per_image, logits_per_text = model(image_input, text_inputs)
+            ground_truth = torch.arange(logits_per_image.shape[0], dtype=torch.long, device=device)
+            total_loss = (loss_img(logits_per_image, ground_truth) + loss_txt(logits_per_text, ground_truth)) / 2
+            epoch_val_loss += total_loss
 
         # Pick the top 5 most similar labels for the image
         image_features /= image_features.norm(dim=-1, keepdim=True)
@@ -202,8 +208,10 @@ for epoch in range(NUM_EPOCHS):
         # for cid in class_ids:
         #     top5_results.append(True if cid in indices else False)
         #     top1_results.append(True if cid == indices[0] else False)
+    writer.add_scalar("Loss/val", epoch_val_loss / num_batches_val, epoch)
 
     print(f"Epoch {epoch} train loss: {epoch_train_loss / num_batches_train}")
+    print(f"Epoch {epoch} val loss: {epoch_val_loss / num_batches_val}")
 
     # compute mean top5 accuracy and top1 accuracy
     mean_top5_accuracy = torch.stack(acc_top5_list).mean().cpu().numpy()
