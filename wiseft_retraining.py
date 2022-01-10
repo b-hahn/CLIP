@@ -12,6 +12,7 @@ from torchvision import transforms
 from tqdm import tqdm
 
 from balanced_batch_sampler import BalancedBatchSampler
+from openai_imagenet_template import openai_imagenet_template
 
 torch.manual_seed(0)
 random.seed(0)
@@ -29,7 +30,8 @@ weights_path.mkdir(exist_ok=True)
 def convert_models_to_fp32(model):
     for p in model.parameters():
         p.data = p.data.float()
-        p.grad.data = p.grad.data.float()
+        if p.requires_grad:
+            p.grad.data = p.grad.data.float()
 
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"  # If using GPU then use mixed precision training.
@@ -58,9 +60,16 @@ val_dataloader = torch.utils.data.DataLoader(val_dataset,
 
 loss_img = torch.nn.CrossEntropyLoss()
 loss_txt = torch.nn.CrossEntropyLoss()
+
+for p in model.transformer.parameters():
+    p.requires_grad = False
+params = [p for p in model.parameters() if p.requires_grad]
 optimizer = torch.optim.Adam(
-    model.parameters(), lr=5e-5, betas=(0.9, 0.98), eps=1e-6,
-    weight_decay=0.2)  #Params used from paper, the lr is smaller, more safe for fine tuning to new dataset
+    params, lr=1e-5, weight_decay=0.1)
+    # , betas=(0.9, 0.98), eps=1e-6)
+    # model.parameters(), lr=5e-5, betas=(0.9, 0.98), eps=1e-6,
+    # weight_decay=0.2)  #Params used from paper, the lr is smaller, more safe for fine tuning to new dataset
+    # weight_decay=0.1)  #Params used from paper, the lr is smaller, more safe for fine tuning to new dataset
 
 # validation accuracy
 values_list, indices_list = [], []
@@ -73,6 +82,7 @@ num_batches_train = len(train_dataloader.dataset)/BATCH_SIZE
 num_batches_val = len(val_dataloader.dataset)/BATCH_SIZE
 
 for epoch in range(NUM_EPOCHS):
+    model.train()
     epoch_train_loss = 0
     j = 0
     print(f"Epoch: {epoch}")
@@ -85,6 +95,11 @@ for epoch in range(NUM_EPOCHS):
         images = torch.stack([img for img in list_image], dim=0).to(
             device
         )
+        # TODO: to use mean of multiple prompts need to pre-compute them.
+        # for label_id in list_txt:
+        #     embedding = []
+        #     for t in openai_imagenet_template:
+        #         embedding.append(t(train_dataloader.dataset.classes[label_id]))
         list_txt = [f"a photo of a {train_dataloader.dataset.classes[label_id]}" for label_id in list_txt]
         texts = clip.tokenize(list_txt).to(device)
 
@@ -92,10 +107,13 @@ for epoch in range(NUM_EPOCHS):
 
         ground_truth = torch.arange(logits_per_image.shape[0], dtype=torch.long, device=device)
 
-        total_loss = (loss_img(logits_per_image, ground_truth) + loss_txt(logits_per_text, ground_truth)) / 2
+        # total_loss = (loss_img(logits_per_image, ground_truth) + loss_txt(logits_per_text, ground_truth)) / 2
+        total_loss = loss_img(logits_per_image, ground_truth)
         # print(f"Loss: {total_loss}")
         epoch_train_loss += total_loss
         total_loss.backward()
+
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         if device == "cpu":
             optimizer.step()
         else:
@@ -116,6 +134,8 @@ for epoch in range(NUM_EPOCHS):
             }, weights_path / f"model_{epoch}.pt")  #just change to your preferred folder/filename
         print(f"Saved weights under model_checkpoint/model_{epoch}.pt.")
 
+
+    model.eval()
     # validation accuracy
     values_list, indices_list = [], []
     top5_results = []
