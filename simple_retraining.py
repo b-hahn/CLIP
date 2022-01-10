@@ -66,8 +66,7 @@ val_dataset = torchvision.datasets.ImageFolder("data/coco_crops_few_shot/test", 
 # val_labels = torch.tensor([i for i in range(len(val_dataset.imgs))])
 val_labels = torch.tensor(val_dataset.targets)
 val_sampler = BalancedBatchSampler(val_labels, BATCH_SIZE, 1)
-val_dataloader = torch.utils.data.DataLoader(torchvision.datasets.ImageFolder("data/coco_crops_few_shot/test",
-                                                                              transform=preprocess),
+val_dataloader = torch.utils.data.DataLoader(val_dataset,
                                             #  batch_size=BATCH_SIZE,
                                              batch_sampler=val_sampler)
 
