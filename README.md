@@ -1,193 +1,51 @@
-# CLIP
+# Few Shot Recognition
 
-[[Blog]](https://openai.com/blog/clip/) [[Paper]](https://arxiv.org/abs/2103.00020) [[Model Card]](model-card.md) [[Colab]](https://colab.research.google.com/github/openai/clip/blob/master/notebooks/Interacting_with_CLIP.ipynb)
+### Few Shot
 
-CLIP (Contrastive Language-Image Pre-Training) is a neural network trained on a variety of (image, text) pairs. It can be instructed in natural language to predict the most relevant text snippet, given an image, without directly optimizing for the task, similarly to the zero-shot capabilities of GPT-2 and 3. We found CLIP matches the performance of the original ResNet50 on ImageNet “zero-shot” without using any of the original 1.28M labeled examples, overcoming several major challenges in computer vision.
+Few shot classification refers to the problem of using a (pretrained) model to learn to classify a set of images with access to only a few examples of each class. In the task at hand the training dataset contained on the order of a few dozen examples of 8 common classes, as shown in the following table.
 
+|         | Airplane | Bicycle | Boat | Bus | Car | Motorcycle | Train | Truck |
+|---------|----------|---------|------|-----|-----|------------|-------|-------|
+| # train | 38       | 21      | 20   | 40  | 19  | 30         | 44    | 22    |
+| # test  | 60       | 46      | 79   | 69  | 47  | 54         | 67    | 81    |
+|         |          |         |      |     |     |            |       |       |
 
+CLIP provides a powerful paradigm for this type of problem. It learns to associate text to images by embedding them in a common space. One can then construct a classifier by providing a set of possible captions that mention the possible labels for an image and select the caption with the highest similarity to the image.
 
-## Approach
+There are several ways to generate captions for each image. One standard way is to use the phrase ‘a sentence of a {object}’ where {object} is replaced by the possible class names. Adding words to disambiguate similar objects sometimes brings about an improvement, as does using multiple prompts and using their mean as an embedding. For simplicity, in this work the simple prompt mentioned above was used.
 
-![CLIP](CLIP.png)
+We can finetune CLIP in several ways: using the entire the network end-to-end or mereley the image encoder only. The latter might make sense in situations where we expect the captions to have been seen and mereley wish to ensure the new images' embeddings are pushed as close as possible to the text embeddings.
+
+The code in this repo was based on https://github.com/openai/CLIP/issues/83.
+
+### Results
+
+Without finetuning CLIP’s top-1 accuracy on the few-shot test data is 89.2%, and top-5 accuracy approaches 100%. This is a formidable baseline, although the latter number is not too surprising given a total of only 8 classes.
+
+The best finetuning performance was 91.3% after 24 epochs of training using a learning rate of 1e-7 and weight decay of 0.0001. Using higher learning rates and a higher weight decay in line with the values mentioned in the paper generally led to slightly worse results. Overall, it was observed that no hyperparameter combination yielded a performance significantly above the baseline, suggesting that CLIP pretraining is quite powerful for the classes in the few-shot dataset provided.
+
+### Future Work
+
+Beyond the scope of this task several methods to improve performance would be worth investigating:
+
+- Adding image augmentations to improve robustness.
+- In this work the training and testing data was used as is after a quick look over it suggested no obviously bad data. A natural next step would be to investigate this more closely and ensure there’s no mislabeled examples or ambiguity affecting the performance.
+- When deploying the model we can accelerate inference by pre-computing the text embeddings and using those as a linear classification head since the labels we are interested in are known in the few-shot case.
+- More complex training regimes using curriculum learning, learning rate schedulers, etc. would be worth trying for further improvement.
+
+### Zero-Shot Learning
+
+The zero shot case described in the task refers to a case where we have neither example images of the data we might want to classify, nor do we know what those examples are.
+
+There are several ways we can approach this problem.
+
+1. We could naively retry the approach described in the Few-Shot Classification section but provide a larger variety of prompts. Assuming the we have trained on a significant share of english language words we may well have encountered the object in the larger pretraining dataset, even if we don’t have explicit examples of it. Ideally, the learned representation is sufficiently powerful such that we hope to discover new object classes with relations such as King - Man + Woman = Queen. Naturally, this approach is limited since some categories may never have been encountered.
+2. We could estimate the probability of an image belonging to a new class by estimating how uncertain a prediction is w/r/t the known classes. If e.g. all 8 classes from the few-shot dataset are assigned a probability of 12.5% our prediction will be no better than random guessing. In this case we could use a separate captioning network to produce the most likely caption, add that to the text embeddings and continue using that.
+3. We can try to perform clustering in the latent space and whenever an image is too far away from the nearest cluster establish a new cluster center. This is a very general approach but requires a sufficiently good learnt representation.
+4. complex combinations of examples - should we separate into disparate classes or not?
 
 
 
 ## Usage
 
-First, [install PyTorch 1.7.1](https://pytorch.org/get-started/locally/) and torchvision, as well as small additional dependencies, and then install this repo as a Python package. On a CUDA GPU machine, the following will do the trick:
-
-```bash
-$ conda install --yes -c pytorch pytorch=1.7.1 torchvision cudatoolkit=11.0
-$ pip install ftfy regex tqdm
-$ pip install git+https://github.com/openai/CLIP.git
-```
-
-Replace `cudatoolkit=11.0` above with the appropriate CUDA version on your machine or `cpuonly` when installing on a machine without a GPU.
-
-```python
-import torch
-import clip
-from PIL import Image
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model, preprocess = clip.load("ViT-B/32", device=device)
-
-image = preprocess(Image.open("CLIP.png")).unsqueeze(0).to(device)
-text = clip.tokenize(["a diagram", "a dog", "a cat"]).to(device)
-
-with torch.no_grad():
-    image_features = model.encode_image(image)
-    text_features = model.encode_text(text)
-    
-    logits_per_image, logits_per_text = model(image, text)
-    probs = logits_per_image.softmax(dim=-1).cpu().numpy()
-
-print("Label probs:", probs)  # prints: [[0.9927937  0.00421068 0.00299572]]
-```
-
-
-## API
-
-The CLIP module `clip` provides the following methods:
-
-#### `clip.available_models()`
-
-Returns the names of the available CLIP models.
-
-#### `clip.load(name, device=..., jit=False)`
-
-Returns the model and the TorchVision transform needed by the model, specified by the model name returned by `clip.available_models()`. It will download the model as necessary. The `name` argument can also be a path to a local checkpoint.
-
-The device to run the model can be optionally specified, and the default is to use the first CUDA device if there is any, otherwise the CPU. When `jit` is `False`, a non-JIT version of the model will be loaded.
-
-#### `clip.tokenize(text: Union[str, List[str]], context_length=77)`
-
-Returns a LongTensor containing tokenized sequences of given text input(s). This can be used as the input to the model
-
----
-
-The model returned by `clip.load()` supports the following methods:
-
-#### `model.encode_image(image: Tensor)`
-
-Given a batch of images, returns the image features encoded by the vision portion of the CLIP model.
-
-#### `model.encode_text(text: Tensor)`
-
-Given a batch of text tokens, returns the text features encoded by the language portion of the CLIP model.
-
-#### `model(image: Tensor, text: Tensor)`
-
-Given a batch of images and a batch of text tokens, returns two Tensors, containing the logit scores corresponding to each image and text input. The values are cosine similarities between the corresponding image and text features, times 100.
-
-
-
-## More Examples
-
-### Zero-Shot Prediction
-
-The code below performs zero-shot prediction using CLIP, as shown in Appendix B in the paper. This example takes an image from the [CIFAR-100 dataset](https://www.cs.toronto.edu/~kriz/cifar.html), and predicts the most likely labels among the 100 textual labels from the dataset.
-
-```python
-import os
-import clip
-import torch
-from torchvision.datasets import CIFAR100
-
-# Load the model
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model, preprocess = clip.load('ViT-B/32', device)
-
-# Download the dataset
-cifar100 = CIFAR100(root=os.path.expanduser("~/.cache"), download=True, train=False)
-
-# Prepare the inputs
-image, class_id = cifar100[3637]
-image_input = preprocess(image).unsqueeze(0).to(device)
-text_inputs = torch.cat([clip.tokenize(f"a photo of a {c}") for c in cifar100.classes]).to(device)
-
-# Calculate features
-with torch.no_grad():
-    image_features = model.encode_image(image_input)
-    text_features = model.encode_text(text_inputs)
-
-# Pick the top 5 most similar labels for the image
-image_features /= image_features.norm(dim=-1, keepdim=True)
-text_features /= text_features.norm(dim=-1, keepdim=True)
-similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
-values, indices = similarity[0].topk(5)
-
-# Print the result
-print("\nTop predictions:\n")
-for value, index in zip(values, indices):
-    print(f"{cifar100.classes[index]:>16s}: {100 * value.item():.2f}%")
-```
-
-The output will look like the following (the exact numbers may be slightly different depending on the compute device):
-
-```
-Top predictions:
-
-           snake: 65.31%
-          turtle: 12.29%
-    sweet_pepper: 3.83%
-          lizard: 1.88%
-       crocodile: 1.75%
-```
-
-Note that this example uses the `encode_image()` and `encode_text()` methods that return the encoded features of given inputs.
-
-
-### Linear-probe evaluation
-
-The example below uses [scikit-learn](https://scikit-learn.org/) to perform logistic regression on image features.
-
-```python
-import os
-import clip
-import torch
-
-import numpy as np
-from sklearn.linear_model import LogisticRegression
-from torch.utils.data import DataLoader
-from torchvision.datasets import CIFAR100
-from tqdm import tqdm
-
-# Load the model
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model, preprocess = clip.load('ViT-B/32', device)
-
-# Load the dataset
-root = os.path.expanduser("~/.cache")
-train = CIFAR100(root, download=True, train=True, transform=preprocess)
-test = CIFAR100(root, download=True, train=False, transform=preprocess)
-
-
-def get_features(dataset):
-    all_features = []
-    all_labels = []
-    
-    with torch.no_grad():
-        for images, labels in tqdm(DataLoader(dataset, batch_size=100)):
-            features = model.encode_image(images.to(device))
-
-            all_features.append(features)
-            all_labels.append(labels)
-
-    return torch.cat(all_features).cpu().numpy(), torch.cat(all_labels).cpu().numpy()
-
-# Calculate the image features
-train_features, train_labels = get_features(train)
-test_features, test_labels = get_features(test)
-
-# Perform logistic regression
-classifier = LogisticRegression(random_state=0, C=0.316, max_iter=1000, verbose=1)
-classifier.fit(train_features, train_labels)
-
-# Evaluate using the logistic regression classifier
-predictions = classifier.predict(test_features)
-accuracy = np.mean((test_labels == predictions).astype(np.float)) * 100.
-print(f"Accuracy = {accuracy:.3f}")
-```
-
-Note that the `C` value should be determined via a hyperparameter sweep using a validation split.
+To finetune, follow the instruction to set up CLIP on the repo's homepage and then run `python few_shot_finetuning.py`.
