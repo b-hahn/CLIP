@@ -16,7 +16,7 @@ There are several ways to generate captions for each image. One standard way is 
 
 We can finetune CLIP in several ways: using the entire the network end-to-end or mereley the image encoder only. The latter might make sense in situations where we expect the captions to have been seen and mereley wish to ensure the new images' embeddings are pushed as close as possible to the text embeddings.
 
-The code in this repo was based on https://github.com/openai/CLIP/issues/83.
+The code in this repo was based on the official CLIP repository as well as https://github.com/openai/CLIP/issues/83.
 
 ### Results
 
@@ -31,19 +31,17 @@ Beyond the scope of this task several methods to improve performance would be wo
 - Adding image augmentations to improve robustness.
 - In this work the training and testing data was used as is after a quick look over it suggested no obviously bad data. A natural next step would be to investigate this more closely and ensure there’s no mislabeled examples or ambiguity affecting the performance.
 - When deploying the model we can accelerate inference by pre-computing the text embeddings and using those as a linear classification head since the labels we are interested in are known in the few-shot case.
-- More complex training regimes using curriculum learning, learning rate schedulers, etc. would be worth trying for further improvement.
+- More complex training regimes using curriculum learning, learning rate schedulers, etc. would be worth trying for further improvement. The paper [Robust fine-tuning of zero-shot models](https://arxiv.org/abs/2109.01903) provides further suggestions on how to robustly combine zero-shot and fine-tuned models to improve accuracy on new data while remaining as accurate as possible on old data.
 
 ### Zero-Shot Learning
 
-The zero shot case described in the task refers to a case where we have neither example images of the data we might want to classify, nor do we know what those examples are.
+The zero shot case described in the task refers to a case where we have neither example images of the data we might want to classify, nor do we know what those examples are. Effectively, the task is to do anomaly detection and automatically update the database of known classes to include the new classes encountered. This is a challenging problem and an active field of research.
 
 There are several ways we can approach this problem.
 
-1. We could naively retry the approach described in the Few-Shot Classification section but provide a larger variety of prompts. Assuming the we have trained on a significant share of english language words we may well have encountered the object in the larger pretraining dataset, even if we don’t have explicit examples of it. Ideally, the learned representation is sufficiently powerful such that we hope to discover new object classes with relations such as King - Man + Woman = Queen. Naturally, this approach is limited since some categories may never have been encountered.
-2. We could estimate the probability of an image belonging to a new class by estimating how uncertain a prediction is w/r/t the known classes. If e.g. all 8 classes from the few-shot dataset are assigned a probability of 12.5% our prediction will be no better than random guessing. In this case we could use a separate captioning network to produce the most likely caption, add that to the text embeddings and continue using that.
-3. We can try to perform clustering in the latent space and whenever an image is too far away from the nearest cluster establish a new cluster center. This is a very general approach but requires a sufficiently good learnt representation.
-4. complex combinations of examples - should we separate into disparate classes or not?
-
+1. We could naively retry the approach described in the Few-Shot Classification section but provide a larger variety of prompts. Assuming our training data does not include precise examples of what we are interested in but sufficient amounts of adjacent clases of objects, we might be able to detect these new objects as well. Ideally, the learned representation is sufficiently powerful such that we hope to discover new object classes with relations such as King - Man + Woman = Queen. Naturally, this approach is limited since some categories may never have been encountered and we have no clear notion of when an object is anomalous.
+2. We could estimate the probability of an image belonging to a new class by estimating how uncertain a prediction is w/r/t the known classes. If e.g. all 8 classes from the few-shot dataset are assigned a probability of 12.5% our prediction will be no better than random guessing. In this case we could use a separate captioning network to produce the most likely caption, add that to the text embeddings and continue using that. This approach has the drawback that it simply moves the problem of zero-shot learning to the captioning network, which may not have seen training examples of the new objects either.
+3. We can try to perform clustering in the latent space and whenever an image is too far away from the nearest cluster establish a new cluster center. This is a very general approach but requires a sufficiently good learnt representation. Self-supervised learning approaches such as SimCLR might be a good starting point.
 
 
 ## Usage
